@@ -1,0 +1,118 @@
+---
+title: "Drought manipulation auxilary measurements"
+author: "George Xenakis"
+date: "2023-03-27"
+output: 
+  html_document: 
+    fig_caption: yes
+  word_document: default
+  pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE, 
+                      message = FALSE, 
+                      evaluate=TRUE,
+                      results = 'hide')
+
+knitr::opts_knit$set(kable.force.latex = FALSE)
+
+```
+Together with the continuous measurements of sap flow we measured continuously soil water content of each pot with 30 cm TDR sensors inserted vertically close to the tree stem, and the polytunnel's air temperature and relative humidity at a 2 m height.
+
+```{r,fig.width=12}
+##~~~~~~~~~~~~~~~~~~~~~~ Soil moisture ~~~~~~~~~~~~~~~~~~ ##
+## read the soil moisture data
+soil.moist <- readFile(system("echo /home/george/Documents/DTCLASS/data/processed/swc/swc.csv",intern=T),h=T)
+
+## Rename the columns of the dataframe
+names(soil.moist)=gsub(pattern="_mean",replacement="",x=names(soil.moist))
+
+## Put the soil moisture data into a list splitted per tree
+## lSWC <-soil.moist%>%gather(data=.,key="tree","swc",2:9)%>%
+##     mutate(tree=factor(tree,levels=unique(tree)))%>%
+##     group_split(tree)
+
+
+smN <- c(3,4,7,8,10,11,12,16)
+treeID <- c("C-6","C-8","C-12","MD-2","MD-5","MD-16")
+
+labels <- c("Control","Medium Drought")
+names(labels) <- c("C","MD")
+soil.moist%>%
+    select(timestamp,paste0("VWC_",smN,"_Avg"))%>%
+    `colnames<-`(c("timestamp","C-6","C-8","C-12","C-15","MD-2","MD-5","MD-7","MD-16"))%>%
+    select(timestamp,all_of(treeID))%>%
+    group_by(timestamp=as.POSIXct(cut(timestamp,breaks="30 min")))%>%
+    summarise_all(list(mean=mean))%>%
+    ## filter(between(timestamp,tsHH[[1]],tsHH[[length(tsHH)]]))%>%
+    gather(key="id",value="vwc",2:7)%>%
+    mutate(ID=id)%>%
+    separate(id,c("treatment","tree"))%>%
+    ## mutate(treatment=recode(tree,"VWC_3_Avg_mean"="C",
+    ##                         "VWC_4_Avg_mean"="C",
+    ##                         "VWC_7_Avg_mean"="C",
+    ##                         "VWC_8_Avg_mean"="C",
+    ##                         "VWC_5_Avg_mean"="MD",
+    ##                         "VWC_16_Avg_mean"="MD"))%>%
+    ggplot(.)+
+    ## geom_line(aes(timestamp,vwc,colour=ID,group=ID))+
+    geom_point(aes(timestamp,vwc,colour=ID,group=ID))+
+    scale_y_continuous(limits=c(0,1))+
+    facet_wrap(.~treatment,nrow=2,ncol=1,
+               labeller=as_labeller(labels))+
+    plotAesthetic+
+    labs(x="Timestamp",y="VWC")+
+    theme(axis.text.x=element_text(size=14),
+            axis.title.x=element_text(size=14),          
+            ## axis.text.x=element_blank(),
+            ## axis.title.x=element_blank(),
+            axis.text.y=element_text(size=14),
+            axis.title.y=element_text(size=14),
+            ## legend.position="none",
+            legend.title=element_text(size=14),
+            legend.text=element_text(size=14),
+            ## plot.margin=unit(c(0,0,0,0),"cm"),
+            plot.title=element_text(size=10,hjust=0.5),
+            strip.text=element_text(size=14))
+    
+```
+
+```{r,fig.width=12,fig.height=10}
+##~~~~~~~~~~~~~~~~~~~~~~ Air temperature and Relative Humidity ~~~~~~~~~~~~~~~~~~ ##
+dtclassDir <- "/home/george/Documents/DTCLASS/data/"
+biomet <- readRDS(file=paste0(dtclassDir,"processed/biomet/biomet.RDS"))
+
+labels <- c("Relative humidity [%]","Air temperature [oC]")
+names(labels) <- c("rh_mean","tair_mean")
+
+b <- biomet%>%fillTimestamp(data=.,timestamp="timestamp",timediff=10,units="min")
+
+b%>%
+    select(timestamp,tair_mean,rh_mean)%>%
+    gather(key="variable",value="value",2:3)%>%
+    ggplot(.)+
+    plotAesthetic+
+    geom_line(aes(timestamp,value))+
+    facet_wrap(.~variable,scales="free",nrow=2,ncol=1,
+               labeller=as_labeller(labels))+
+    labs(x="Timestamp",y="Value")+
+    theme(axis.text.x=element_text(size=14),
+            axis.title.x=element_text(size=14),          
+            ## axis.text.x=element_blank(),
+            ## axis.title.x=element_blank(),
+            axis.text.y=element_text(size=14),
+            axis.title.y=element_text(size=14),
+            ## legend.position="none",
+            legend.title=element_text(size=14),
+            legend.text=element_text(size=14),
+            ## plot.margin=unit(c(0,0,0,0),"cm"),
+            plot.title=element_text(size=10,hjust=0.5),
+            strip.text=element_text(size=14))
+    
+    
+```

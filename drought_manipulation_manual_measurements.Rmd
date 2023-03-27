@@ -46,11 +46,12 @@ manual <- manual%>%
 
 
 ## Manual measurements
-First let's look at all the variables (Must fix this!!!)
-```{r}
+First let's look at all the variables.
+
+```{r,fig.width=16,fig.height=10}
 manual%>%mutate(date=Date)%>%unite(d.tr,c("date","treatment"),sep="-")%>%
     gather(key="variable",value="value",4:7)%>%
-    ggplot(.)+
+    ggplot(.)+plotAesthetic+
     geom_boxplot(aes(d.tr,value,group=d.tr))+
     facet_wrap(.~variable+Date,scales="free")
 ```
@@ -64,8 +65,11 @@ manual%>%
     group_by(Date,treatment)%>%
     summarise(across(2:5,list(mean=mean,se=se.f)))%>%
     ggplot(.,aes(Date,PsiL_mean,group=treatment,fill=treatment))+
+    plotAesthetic+
     geom_bar(stat="identity",position=position_dodge())+
-    geom_errorbar(aes(x=Date,ymax=PsiL_mean+PsiL_se,ymin=PsiL_mean-PsiL_se),width=2,position=position_dodge(5))
+    geom_errorbar(aes(x=Date,ymax=PsiL_mean+PsiL_se,ymin=PsiL_mean-PsiL_se),width=2,position=position_dodge(5))+
+    labs(fill="Treatment")+
+    geom_hline(yintercept=0,linetype=2)
 ```
 
 Finally, let's look at the soil water potential.
@@ -74,7 +78,9 @@ manual%>%
     group_by(Date,treatment)%>%
     summarise(across(2:5,list(mean=mean,se=se.f)))%>%
     ggplot(.,aes(Date,PsiS_mean,group=treatment,fill=treatment))+
+    plotAesthetic+
     geom_bar(stat="identity",position=position_dodge())+
-    geom_errorbar(aes(x=Date,ymax=PsiS_mean+PsiS_se,ymin=PsiS_mean-PsiS_se),width=2,position=position_dodge(5))
-
+    geom_errorbar(aes(x=Date,ymax=PsiS_mean+PsiS_se,ymin=PsiS_mean-PsiS_se),width=2,position=position_dodge(5))+
+    labs(fill="Treatment")+
+    geom_hline(yintercept=0,linetype=2)
 ```
