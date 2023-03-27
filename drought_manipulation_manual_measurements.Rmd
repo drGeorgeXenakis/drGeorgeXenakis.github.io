@@ -1,0 +1,80 @@
+---
+title: "Drought manipulation manual measurements"
+author: "George Xenakis"
+date: "2023-03-27"
+output: 
+  html_document: 
+    fig_caption: yes
+  word_document: default
+  pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE, 
+                      message = FALSE, 
+                      evaluate=TRUE,
+                      results = 'hide')
+
+knitr::opts_knit$set(kable.force.latex = FALSE)
+
+```
+
+
+```{r}
+dtclassDir <- "/home/george/Documents/DTCLASS/data/"
+
+manual<-readFile("/home/george/Documents/DTCLASS/data/processed/manual_measurements/manual.csv",h=T)
+
+manual<-manual%>%mutate(id=ID)%>%separate(id,c("treatment","tree"))
+
+
+
+
+manual <- readFile(dataFile=paste0(dtclassDir,"processed/manual_measurements/manual.csv"),h=T)
+manual <- manual%>%
+    mutate(date=as.POSIXct(as.character(Date),tz="GMT"))%>%
+    separate(ID,c("treatment","tree"))%>%
+    mutate(tree=as.numeric(tree),
+           PsiL=-PsiL*0.1)
+
+
+```
+
+
+## Manual measurements
+First let's look at all the variables (Must fix this!!!)
+```{r}
+manual%>%mutate(date=Date)%>%unite(d.tr,c("date","treatment"),sep="-")%>%
+    gather(key="variable",value="value",4:7)%>%
+    ggplot(.)+
+    geom_boxplot(aes(d.tr,value,group=d.tr))+
+    facet_wrap(.~variable+Date,scales="free")
+```
+
+
+Then let's look at the "leaf" water potential (basically this is for cohort of leaves). This is the mid-day water potential
+
+```{r}
+
+manual%>%
+    group_by(Date,treatment)%>%
+    summarise(across(2:5,list(mean=mean,se=se.f)))%>%
+    ggplot(.,aes(Date,PsiL_mean,group=treatment,fill=treatment))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=Date,ymax=PsiL_mean+PsiL_se,ymin=PsiL_mean-PsiL_se),width=2,position=position_dodge(5))
+```
+
+Finally, let's look at the soil water potential.
+```{r}
+manual%>%
+    group_by(Date,treatment)%>%
+    summarise(across(2:5,list(mean=mean,se=se.f)))%>%
+    ggplot(.,aes(Date,PsiS_mean,group=treatment,fill=treatment))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=Date,ymax=PsiS_mean+PsiS_se,ymin=PsiS_mean-PsiS_se),width=2,position=position_dodge(5))
+
+```
