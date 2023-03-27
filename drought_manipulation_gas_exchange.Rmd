@@ -1,0 +1,502 @@
+---
+title: "Drought manipulation gas exchange"
+author: "George Xenakis"
+date: "2023-03-27"
+output: 
+  html_document: 
+    fig_caption: yes
+  word_document: default
+  pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE, 
+                      message = FALSE, 
+                      evaluate=TRUE,
+                      results = 'hide')
+
+knitr::opts_knit$set(kable.force.latex = FALSE)
+
+```
+
+
+```{r}
+```{r}
+## #################################################### ##
+## Script for reading LI6800 data and fitting           ##
+## light response and A/Ci response curves              ##
+## using data collected during the drought experiment   ##
+## for DTCLASS and FORWaRD                              ##
+##                                                      ## 
+## Developed by George Xenakis - 06/03/2023             ##
+## email: georgios.xenakis@forestresearch.gov.uk        ##
+## #################################################### ##
+
+## Load necessary packages
+library(photosynthesis)
+
+## Set up some directory locations
+dtclassDir <- "/home/george/Documents/DTCLASS/data/"
+rawGasExchangeDir <- paste0(dtclassDir,"raw/gas_exchange/")
+
+
+## =============================================== Define custom functions  ================================================= ##
+## Function to get the dates for certain type of measurements (e.g., light curves, co2 curves)
+extractSamplingDates <- function(path,type){
+    dates <- system(paste0('find ',path, ' \\( -iname "*',type,'*" ! -iname "*flow*" ! -iname "*original*"  \\) | sort'),intern=T)%>%strsplit(.,"/")%>%do.call("rbind",.)%>%as.data.frame()%>%pull("V9")%>%unique()
+    return(dates)
+}
+
+
+## A function to read the LI6800 dataset
+readLicorData <- function(path,type,specificVar=TRUE){
+    ## read the file names in the path given for the type of curve (i.e., light or a/ci curve)
+    fileNames <- system(paste0('find ',path, ' \\( -iname "*',type,'*" ! -iname "*flow*" ! -iname "*original*"  ! -iname "*C-15*" ! -iname "*MD-7*" \\) | sort'),intern=T)
+    ## read the files and each data frame put in a list
+    ## l <- lapply(fileNames,readFile,nSkip=67,nSkipNames=65,sep="\t")
+    l <- lapply(fileNames,photosynthesis::read_li6800)
+    if(specificVar) l <- lapply(l,selectSpecificVariables,type=type)
+    ## for each data frame read put the treatment and number of the tree,
+    ## extracted from the file name
+    if(type!="survey"){
+        for(i in 1:length(fileNames)){
+            l[[i]] <- l[[i]]%>%mutate(id=fileNames[i]%>%strsplit(.,"_")%>%do.call("rbind",.)%>%as.data.frame%>%pull("V6"),.before=2)
+        }
+    }else{
+        for(i in 1:length(fileNames)){
+            l[[i]] <- l[[i]]%>%mutate(id=fileNames[i]%>%strsplit(.,"_")%>%do.call("rbind",.)%>%as.data.frame%>%pull("V5"),.before=2)
+        }            
+    }
+    return(l)
+}
+
+## Function to select specific range of columns from the licor data
+selectSpecificVariables <- function(data,type){
+    if(type!="survey"){
+        data <- data%>%select(1:62,Q)
+    }else{
+        data <- data%>%select(date,A,gsw,iWUE)
+    }
+}
+
+## ## A custom function to calculate the standard error of the mean
+## se.f <- function(x,na.rm=FALSE) x <- sd(x,na.rm=na.rm)/sqrt(length(x))
+
+## A function to remove rows within the data where there is text
+## (i.e., changes to the parameters during a measurement)
+cleanLicorData <- function(data){
+    data <- data%>%mutate(date=ifelse(is.na(A),NA,date))%>%
+        drop_na(A)
+}
+
+## ========================================================================================================================== ##
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ##
+## ~~~~ Start the main script ~~~~ ##
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ##
+
+## Read the leaf area adjustment file
+leafAreaAdj <- readFile(paste0(dtclassDir,"/processed/leaf_area/leaf_area_adj.csv"),h=T)%>%select(id,adj)
+
+```
+
+
+## Description
+In the summer of 2022 the pilot study was concluded. For the experiment, European larch trees were used (available from a previous experiment). The drought experiment had two treatments, a control (C) and a "medium drought" (MD). The controlled treatment was watered at field capacity throughout the experiment. The drought treatment was watered for two weeks and then droughted for two weeks by stoping watering completely. Leaf level physiological measurements were conducted at the end of the watering and drought period respectively. There were 3-4 survey periods. During each measurement campaign I measured, cohort water potential (as a proxy for leaf water potential), soil water potential, soil water content, soil temperature, light curves, A/Ci curves, stomatal conductance and photosynthesis with a survey. In addition, sap flow and soil moisture content was measured continuously together with auxiliary variables, air temperature and relative humidity.
+
+### Light curves
+For each period for each tree light curves were conducted and models fitted to calculated the key physiological parameters.
+
+
+```{r}
+## ~~~~~~~~~~~~~~ Fit light curves ~~~~~~~~~~~~~~~~~ ##
+
+## Get from the raw data file directory for which dates
+## we have light curve measurements    
+lightCurveDates <- extractSamplingDates(path=rawGasExchangeDir,type="light_curve")
+
+## Plot light curves for each sampling date
+pL <- list()
+for(k in 1:length(lightCurveDates)){
+    ## First read the licor data for a specific sampling date
+    lightCurveList <- readLicorData(path=paste0(rawGasExchangeDir,lightCurveDates[k]),type="light_curve")
+    
+    ## Convert the list of data frames into one data frame
+    lightCurves <- do.call("rbind",lightCurveList)
+
+    p <- ggplot(lightCurves)+
+        geom_point(aes(Qabs,A,group=id,colour=id))+
+        geom_line(aes(Qabs,A,group=id,colour=id))+
+        labs(y=expression(paste(A," [",mu,"mol m"^-2~" s"^-1~"]")),x=expression(paste(Q[abs]," [",mu,"mol m"^-2~" s"^-1~"]")),colour="ID")
+    pL[k] <- list(p)
+}
+
+## A single plot with four graphs
+egg::ggarrange(plots=pL,nrow=2,ncol=2)
+
+```
+
+The parameters were then averaged for each survey date, for each treatment and compared to see the impact of wet-dry events.
+
+```{r}
+
+## Custom function to fit light curves and give fitted parameters in a data frame for each fit as a list
+fitLightCurves <- function(arg="par"){
+    lightCurveParFitList <- list()
+    lightCurveGraphList <- list()
+    ## A loop to fit the light curves for each plant, for each sampling date
+    for(k in 1:length(lightCurveDates)){
+
+        ## First read the licor data for a specific sampling date
+        lightCurveList <- readLicorData(path=paste0(rawGasExchangeDir,lightCurveDates[k]),type="light_curve")
+        
+        ## Convert the list of data frames into one data frame
+        lightCurves <- do.call("rbind",lightCurveList)
+        
+        ## Merge the leaf area adjustement data frame and calculate the adjusted variable
+        ## (i.e., photosynthesis, conductance and water use efficiency)
+        lightCurves <- lightCurves%>%
+            left_join(leafAreaAdj,by="id")%>%
+            mutate(A=A*adj,
+                   gsw=gsw*adj,
+                   iWUE=iWUE*adj)%>%
+            select(id,A,Qabs)%>%as.data.frame
+        
+        
+        ## fits <- fit_many(
+        ##     data=lightCurves,
+        ##     varnames=list(
+        ##         A_net="A",
+        ##         PPFD="Qabs"
+        ##     ),
+        ##     funct=fit_aq_response,
+        ##     group="id")
+
+        fits <- lightCurves%>%
+            split(~id)%>%
+            map(fit_photosynthesis,
+                .photo_fun="aq_response",
+                .vars=list(
+                    .A=A,
+                    .Q=Qabs))
+        
+        
+        fits_pars <- lapply(fits,coef)%>%
+            do.call("rbind",.)%>%
+            as.data.frame%>%
+            rownames_to_column(., var="id")%>%
+            as_tibble()%>%
+            mutate(date=lightCurveDates[k],.before=1)%>%
+            separate(id,c("treatment","tree"))
+
+        ## fits_graphs <- compile_data(fits,
+        ##                             list_element=3)
+        
+        ## fits_pars <- compile_data(fits,
+        ##                           output_type="dataframe",
+        ##                           list_element=2)%>%
+        ##     mutate(date=lightCurveDates[k],.before=1)%>%
+        ##     separate(ID,c("treatment","tree"))
+        
+        lightCurveParFitList[k] <- list(fits_pars)
+        ## lightCurveGraphList[k] <- list(fits_graphs)
+    }
+    ## if(arg=="par"){
+        return(lightCurveParFitList)
+    ## }else if(arg=="graph"){
+    ##     return(lightCurveGraphList)
+    ## }
+}
+
+
+## Run the fitting function for light curves and get the parameters
+## and save the exported list 
+lightCurveParFitList <- fitLightCurves()
+## lightCurveGraphList <- fitLightCurves("graph")
+
+## Plot fitted light curves
+## graphics.off()
+## for(k in 1:length(lightCurveDates)){
+##     x11();
+##     egg::ggarrange(plots=lightCurveGraphList[[k]])
+## }
+
+
+## Combine fitted parameters list into a data frame
+lightCurveParFit <- do.call("rbind",lightCurveParFitList)
+
+
+## Group the parameters per date of sampling and per treatment
+## and calculate the standard deviation and standard error
+summaryLC <- lightCurveParFit%>%
+    ## unite(id,c("treatment","tree"),sep="-")%>%
+    ## filter((date!=lightCurveDates[[2]]|id!="MD-16")&
+    ##        (date!=lightCurveDates[[2]]|id!="MD-5"))%>%
+    ## separate(id,c("treatment","tree"))%>%
+    group_by(date,treatment)%>%
+    summarise(across(2:5,list(mean=mean,sd=sd,se=se.f)))
+
+labels <- c("First wet","First drought","Second wet","Second drought")
+names(labels) <- lightCurveDates
+pKsat <- ggplot(data=summaryLC,aes(x=treatment,y=k_sat_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=k_sat_mean+k_sat_se,ymin=k_sat_mean-k_sat_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(A[sat]," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+
+pPhiJ <- ggplot(data=summaryLC,aes(x=treatment,y=phi_J_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=phi_J_mean+phi_J_se,ymin=phi_J_mean-phi_J_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(phi[J],"")),x="Treatment",fill="Survey date")
+
+
+pRd <- ggplot(data=summaryLC,aes(x=treatment,y=Rd_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=Rd_mean+Rd_se,ymin=Rd_mean-Rd_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(R[d]," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+egg::ggarrange(pKsat,pPhiJ,pRd,nrow=3,ncol=1)
+```
+
+
+### A/Ci curves
+The process was repeated for A/Ci curves. First, I plotted the curves.
+
+```{r}
+## ~~~~~~~~~~~~~~~ Fit A/Ci curves ~~~~~~~~~~~~~~~~~ ##
+
+## Get from the raw data file directory for which dates
+## we have a/ci curve measurements
+aciCurveDates <- extractSamplingDates(path=rawGasExchangeDir,type="co2_curve")[1:3]
+
+
+## Plot aci curves for each sampling date
+pL <- list()
+for(k in 1:length(aciCurveDates)){
+    ## First read the licor data for a specific sampling date
+    aciCurveList <- readLicorData(path=paste0(rawGasExchangeDir,aciCurveDates[k]),type="co2_curve")
+    
+    ## Convert the list of data frames into one data frame
+    aciCurves <- do.call("rbind",aciCurveList)
+
+    p <- ggplot(aciCurves)+
+        geom_point(aes(Ci,A,group=id,colour=id))+
+        geom_line(aes(Ci,A,group=id,colour=id))+
+        labs(y=expression(paste(A," [",mu,"mol m"^-2~" s"^-1~"]")),x=expression(paste(C[i]," [",mu,"mol mol",''^-1~"]")),colour="ID")
+      scale_linetype_manual(name="ID")
+    pL[k] <- list(p)
+}
+
+## A single plot with four graphs
+egg::ggarrange(plots=pL,nrow=2,ncol=2)
+
+```
+
+Then I fitted the parameters and average them across survey dates and treatments.
+```{r}
+
+
+## Custom function to fit aci curves and give fitted parameters in a data frame for each fit as a list
+fitAciCurves <- function(arg="par"){
+    aciCurveParFitList <- list()
+    aciCurveGraphList <- list()
+    ## A loop to fit the aci curves for each plant, for each sampling date
+    for(k in 1:length(aciCurveDates)){
+
+        ## First read the licor data for a specific sampling date
+        aciCurveList <- readLicorData(path=paste0(rawGasExchangeDir,aciCurveDates[k]),type="co2_curve")
+        
+        ## Convert the list of data frames into one data frame
+        aciCurves <- do.call("rbind",aciCurveList)
+        
+        ## Merge the leaf area adjustement data frame and calculate the adjusted variable
+        ## (i.e., photosynthesis, conductance and water use efficiency)
+        aciCurves <- aciCurves%>%
+            left_join(leafAreaAdj,by="id")%>%
+            mutate(A=A*adj,
+                   gsw=gsw*adj,
+                   iWUE=iWUE*adj,
+                   Tleaf=TleafEB+273.15)##  %>%
+        ## filter(id!="MD-5")
+        
+        
+        ## fits <- fit_many(
+        ##     data=data.frame(aciCurves),
+        ##     .vars=list(
+        ##         .A=A,
+        ##         .Q=Qabs),
+        ##     .photo_fun = "aq_response",
+        ##     funct=fit_photosynthesis,
+        ##     group="id")
+
+        ## fits <- aciCurves%>%
+        ##     split(~id)%>%
+        ##     map(fit_photosynthesis,
+        ##         .photo_fun="aci_response",
+        ##         .vars=list(
+        ##             .A=A,
+        ##             .C_i=Ci))
+
+        fits <- fit_many(
+            data=aciCurves,
+            varnames=list(
+                A_net="A",
+                T_leaf="Tleaf",
+                C_i="Ci",
+                PPFD="Qabs"
+            ),
+            funct=fit_aci_response,
+            group="id")
+        
+        fits_graphs <- compile_data(fits,
+                                    list_element=2)
+        
+        fits_pars <- compile_data(fits,
+                                  output_type="dataframe",
+                                  list_element=1)%>%
+            mutate(date=aciCurveDates[k],.before=1)%>%
+            separate(ID,c("treatment","tree"))
+        
+        aciCurveParFitList[k] <- list(fits_pars)
+        aciCurveGraphList[k] <- list(fits_graphs)
+    }
+    if(arg=="par"){
+        return(aciCurveParFitList)
+    }else if(arg=="graph"){
+        return(aciCurveGraphList)
+    }
+}
+
+
+## Run the fitting function for A/Ci curves and get the parameters
+## and save the exported list 
+aciCurveParFitList <- fitAciCurves("par")
+
+## Combine fitted parameters list into a data frame
+aciCurveParFit <- do.call("rbind",aciCurveParFitList)
+
+
+summaryAci <- aciCurveParFit%>%group_by(date,treatment)%>%
+    summarise(across(2:27,list(mean=mean,sd=sd,se=se.f)))
+
+
+
+
+
+
+
+labels <- c("First wet","First drought","Second wet")
+names(labels) <- aciCurveDates
+pVcmax <- ggplot(data=summaryAci,aes(x=treatment,y=V_cmax_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=V_cmax_mean+V_cmax_se,ymin=V_cmax_mean-V_cmax_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(V[cmax]," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+
+pJmax <- ggplot(data=summaryAci,aes(x=treatment,y=J_max_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=J_max_mean+J_max_se,ymin=J_max_mean-J_max_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(J[max],," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+
+pRd <- ggplot(data=summaryAci,aes(x=treatment,y=R_d_mean,fill=date))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels))+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=treatment,ymax=R_d_mean+R_d_se,ymin=R_d_mean-R_d_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(2,3,4,5))+
+    labs(y=expression(paste(R[d]," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+## Plots
+egg::ggarrange(pVcmax,pJmax,pRd,nrow=3,ncol=1)
+
+```
+
+## Survey
+Finally, along the light and A/Ci curves I conducted a survey of all the trees in each population measuring stomatal conductance and photosynthesis to get the mean for each treatment. Again, the mean was calculated per survey date per treatment.
+
+```{r}
+surveyDates <- extractSamplingDates(path=rawGasExchangeDir,type="survey")
+
+surveyList <- readLicorData(rawGasExchangeDir,type="survey",specificVar=TRUE)
+
+surveyList <- lapply(surveyList,cleanLicorData)
+
+surveyData <- do.call("rbind",surveyList)
+
+surveyData <- surveyData%>%mutate(timestamp=as.POSIXct(date,format="%Y%m%d %H:%M:%S"),date=as.Date(timestamp),.before=1)
+
+LAadj <- leafAreaAdj%>%separate(id,c("treatment","treeNo"))%>%
+    filter(treeNo!=15&treeNo!=16)%>%
+    group_by(treatment)%>%
+    summarise(meanAdj=mean(adj))%>%
+    mutate(id=recode(treatment,"C"="control","MD"="drought"))%>%
+    select(id,meanAdj)
+
+surveyData <- surveyData%>%left_join(LAadj,by="id")%>%
+    mutate(A=A*meanAdj,
+           gsw=gsw*meanAdj,
+           iWUE=iWUE*meanAdj)%>%
+    select(timestamp,date,id,A,gsw,iWUE)
+
+summarySurvey <- surveyData%>%
+    group_by(date,id)%>%
+    summarise(across(2:4,list(mean=mean,se=se.f),na.rm=T))
+
+
+
+labels <- c("First drought","Second wet","Second drought")
+names(labels) <- surveyDates
+
+pA <- ggplot(data=summarySurvey,aes(x=id,y=A_mean,fill=as.factor(date)))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels)
+               )+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=id,ymax=A_mean+A_se,ymin=A_mean-A_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(3,4,5))+
+    labs(y=expression(paste(A," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+
+pGsw <- ggplot(data=summarySurvey,aes(x=id,y=gsw_mean,fill=as.factor(date)))+
+    facet_wrap(.~date,nrow=1,ncol=4,
+               labeller=as_labeller(labels)
+               )+
+    geom_bar(stat="identity",position=position_dodge())+
+    geom_errorbar(aes(x=id,ymax=gsw_mean+gsw_se,ymin=gsw_mean-gsw_se),width=.2,position=position_dodge(0.9))+
+    plotAesthetic+
+    scale_fill_manual(values=c(3,4,5))+
+    labs(y=expression(paste(g[sw]," [",mu,"mol m"^-2~" s"^-1~"]")),x="Treatment",fill="Survey date")
+
+
+egg::ggarrange(pA,pGsw,nrow=2,ncol=1)
+
+```
+
+
