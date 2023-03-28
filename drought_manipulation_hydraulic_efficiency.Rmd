@@ -498,7 +498,6 @@ fitAciCurves <- function(arg="par"){
 ## Run the fitting function for A/Ci curves and get the parameters
 ## and save the exported list 
 aciCurveParFitList <- fitAciCurves("par")
-aciCurveGraphList <- fitAciCurves("graph")
 
 
 ## Plot fitted aci curves
@@ -509,6 +508,7 @@ aciCurveGraphList <- fitAciCurves("graph")
 
 ## Combine fitted parameters list into a data frame
 aciCurveParFit <- do.call("rbind",aciCurveParFitList)
+
 ```
 
 ```{r}
@@ -629,7 +629,7 @@ fit.ksat <- nlsLM(data = lightCurveEff, n_mean ~ Michaelis_Menten(k_sat,slope=sl
                  control = nls.lm.control(maxiter = 1000))
 summary(fit.ksat)
 calculateRsq(data=lightCurveEff,modelFit = fit.ksat,depVar = n_mean)
-pred.ksat<-tibble(ksat=seq(0,30,2),n.pred=Michaelis_Menten(ksat,slope=coef(fit.ksat)[[2]],sat=coef(fit.ksat)[[1]],r=coef(fit.ksat)[[3]]))
+pred.ksat<-tibble(ksat=seq(0,30,0.5),n.pred=Michaelis_Menten(ksat,slope=coef(fit.ksat)[[2]],sat=coef(fit.ksat)[[1]],r=coef(fit.ksat)[[3]]))
 
 ## Fit the model for PhiJ vs mean efficiency
 fit.phiJ <- nlsLM(data = lightCurveEff, n_mean ~ Michaelis_Menten(phi_J,slope=slope,sat,r),
@@ -641,33 +641,9 @@ fit.phiJ <- nlsLM(data = lightCurveEff, n_mean ~ Michaelis_Menten(phi_J,slope=sl
                  control = nls.lm.control(maxiter = 1000))
 summary(fit.phiJ)
 calculateRsq(data=lightCurveEff,modelFit = fit.phiJ,depVar = n_mean)
-pred.phiJ<-tibble(phiJ=seq(0,30,2),n.pred=Michaelis_Menten(phiJ,slope=coef(fit.phiJ)[[2]],sat=coef(fit.phiJ)[[1]],r=coef(fit.phiJ)[[3]]))
+pred.phiJ<-tibble(phiJ=seq(0,0.3,0.005),n.pred=Michaelis_Menten(phiJ,slope=coef(fit.phiJ)[[2]],sat=coef(fit.phiJ)[[1]],r=coef(fit.phiJ)[[3]]))
 
 
-## Fit the model for Vcmax vs mean efficiency
-fit.vcmax <- nlsLM(data = aciCurveEff, n_mean ~ Michaelis_Menten(V_cmax,slope=slope,sat,r),
-                 start = list(sat = 0.9,
-                              slope = 1,
-                              r = 1),
-                 ## lower = c(min(cntr$A),0, 0, 0),
-                 ## upper = c(10 * max(abs(cntr$A)), 0.5, 1, max(abs(cntr$A))),
-                 control = nls.lm.control(maxiter = 1000))
-summary(fit.vcmax)
-calculateRsq(data=aciCurveEff,modelFit = fit.vcmax,depVar = n_mean)
-pred.vcmax<-tibble(vcmax=seq(0,30,2),n.pred=Michaelis_Menten(vcmax,slope=coef(fit.vcmax)[[2]],sat=coef(fit.vcmax)[[1]],r=coef(fit.vcmax)[[3]]))
-
-
-## Fit the model for Jmax vs mean efficiency
-fit.jmax <- nlsLM(data = aciCurveEff, n_mean ~ Michaelis_Menten(J_max,slope=slope,sat,r),
-                 start = list(sat = 0.9,
-                              slope = 1,
-                              r = 1),
-                 ## lower = c(min(cntr$A),0, 0, 0),
-                 ## upper = c(10 * max(abs(cntr$A)), 0.5, 1, max(abs(cntr$A))),
-                 control = nls.lm.control(maxiter = 1000))
-summary(fit.jmax)
-calculateRsq(data=aciCurveEff,modelFit = fit.jmax,depVar = n_mean)
-pred.jmax<-tibble(jmax=seq(0,30,2),n.pred=Michaelis_Menten(jmax,slope=coef(fit.jmax)[[2]],sat=coef(fit.jmax)[[1]],r=coef(fit.jmax)[[3]]))
 
 
 
@@ -729,7 +705,7 @@ pEff.phiJ <- lightCurveEff%>%
     ## area of unrestricted water supply
     annotate("rect",xmin=min(lightCurveEff$phi_J),xmax=max(lightCurveEff$phi_J),ymin=0.89,ymax=1,fill="grey90",alpha=0.4,colour=NA)+
     scale_colour_manual(values=c(1,2,3,4),labels=labels,name="Period")+
-    scale_shape_discrete(name="Treatment")+    
+    scale_shape_discrete(name="Treatment")+
     theme(#panel.grid=element_blank(),
         plot.margin=unit(c(0,0,0,1),"cm"),
         strip.text=element_blank(),
@@ -795,12 +771,42 @@ aciCurveEff <- aciCurveParFit%>%
     mutate(ID=id)%>%
     separate(ID,c("treatment","treeNo"))
 
+
+
+## Fit the model for Vcmax vs mean efficiency
+fit.vcmax <- nlsLM(data = aciCurveEff, n_mean ~ Michaelis_Menten(V_cmax,slope=slope,sat,r),
+                 start = list(sat = 0.9,
+                              slope = 1,
+                              r = 1),
+                 ## lower = c(min(cntr$A),0, 0, 0),
+                 ## upper = c(10 * max(abs(cntr$A)), 0.5, 1, max(abs(cntr$A))),
+                 control = nls.lm.control(maxiter = 1000))
+summary(fit.vcmax)
+calculateRsq(data=aciCurveEff,modelFit = fit.vcmax,depVar = n_mean)
+pred.vcmax<-tibble(vcmax=seq(2,70,1.1),n.pred=Michaelis_Menten(vcmax,slope=coef(fit.vcmax)[[2]],sat=coef(fit.vcmax)[[1]],r=coef(fit.vcmax)[[3]]))#%>%slice(2:nrow(pred.vcmax))
+nrow(pred.vcmax)
+
+## Fit the model for Jmax vs mean efficiency
+fit.jmax <- nlsLM(data = aciCurveEff, n_mean ~ Michaelis_Menten(J_max,slope=slope,sat,r),
+                 start = list(sat = 0.9,
+                              slope = 1,
+                              r = 1),
+                 ## lower = c(min(cntr$A),0, 0, 0),
+                 ## upper = c(10 * max(abs(cntr$A)), 0.5, 1, max(abs(cntr$A))),
+                 control = nls.lm.control(maxiter = 1000))
+summary(fit.jmax)
+calculateRsq(data=aciCurveEff,modelFit = fit.jmax,depVar = n_mean)
+pred.jmax<-tibble(jmax=seq(10,200,3),n.pred=Michaelis_Menten(jmax,slope=coef(fit.jmax)[[2]],sat=coef(fit.jmax)[[1]],r=coef(fit.jmax)[[3]]))
+nrow(pred.jmax)
+
+
 labels <- c("First wet","First drought","Second wet")
 names(labels) <- aciCurveDates
 
 pEff.Vcmax <- aciCurveEff%>%
     ggplot(.)+
     geom_point(aes(V_cmax,n_mean,shape=treatment,colour=as.factor(date)),size=3)+
+    geom_line(data=pred.vcmax,aes(x=vcmax,y=n.pred))+
     plotAesthetic+
     annotate("rect",xmin=min(aciCurveEff$V_cmax),xmax=max(aciCurveEff$V_cmax),ymin=0,ymax=0.412,fill="orangered",alpha=0.2,colour=NA)+
     ## area of most efficient water transport
@@ -829,6 +835,7 @@ pEff.Vcmax <- aciCurveEff%>%
 pEff.Jmax <- aciCurveEff%>%
     ggplot(.)+
     geom_point(aes(J_max,n_mean,shape=treatment,colour=as.factor(date)),size=3)+
+    geom_line(data=pred.jmax,aes(x=jmax,y=n.pred))+
     plotAesthetic+
     annotate("rect",xmin=min(aciCurveEff$J_max),xmax=max(aciCurveEff$J_max),ymin=0,ymax=0.412,fill="orangered",alpha=0.2,colour=NA)+
     ## area of most efficient water transport
@@ -888,7 +895,7 @@ pEff.R_d <- aciCurveEff%>%
 
 ```
 
-```{r,fig.width=16,fig.height=10}
+```{r,fig.width=20,fig.height=14}
 egg::ggarrange(pEff.kSat,pEff.phiJ,pEff.Vcmax,pEff.Jmax,nrow=2,ncol=2)
 
 
