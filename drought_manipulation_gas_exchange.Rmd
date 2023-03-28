@@ -25,7 +25,6 @@ knitr::opts_knit$set(kable.force.latex = FALSE)
 
 
 ```{r}
-```{r}
 ## #################################################### ##
 ## Script for reading LI6800 data and fitting           ##
 ## light response and A/Ci response curves              ##
