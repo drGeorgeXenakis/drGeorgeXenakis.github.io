@@ -109,8 +109,8 @@ plotSPACEff <- function(data){
         geom_line(aes(x=timestamp,y=n))+
         geom_hline(yintercept=0,linetype=3)+
         scale_y_continuous(name=expression(paste(eta," [unitless]", sep = " ")),limits=c(0,1))+
-        scale_x_datetime(limits=c(as.POSIXct("2021-05-25"),as.POSIXct("2021-08-18")),
-                         breaks=seq(as.POSIXct("2021-05-25",tz="GMT"),as.POSIXct("2021-08-18",tz="GMT"),by="10 day"),
+        scale_x_datetime(limits=c(minTS,maxTS),
+                         breaks=seq(minTS,maxTS,by="10 day"),
                          labels = date_format("%d\n%b"),name="Timestamp")+
         theme(#panel.grid=element_blank(),
               plot.margin=unit(c(0,0,0,1),"cm"),
@@ -317,10 +317,6 @@ smN <- c(3,4,7,8,10,11,12,16)
 treeID <- c("C-6","C-8","C-12","MD-2","MD-5","MD-16")
 treeOrder <- c(6,8,12,2,5,16)
 
-
-```
-
-```{r}
 ## Read the leaf area adjustment file
 leafAreaAdj <- readFile(paste0(dtclassDir,"/processed/leaf_area/leaf_area_adj.csv"),h=T)%>%select(id,adj)
 
@@ -516,7 +512,23 @@ sapDataCT <- readRDS(file=paste0(dtclassDir,"processed/sapflow/sapDataCT.RDS"))
 
 ## Put the data in one data frame
 sDCT <- do.call("rbind",sapDataCT)
+```
 
+## Hydraulic efficiency of the soil-plant-atmosphere continuum
+The plots show the efficiency for each tree, three control (top) and tree drought (bottom). The highlighted areas show each zone of the hydrualic efficiency. We see that $\eta$ drops rapidly when watering stops and rapidly increased when water is reintroduced. The sharp decline/increase is because there is very little "natural" drainage and the treatment was very harsh.
+
+```{r, fig.width=18, fig.height=10}
+pLSPACEff <- lapply(sapDataCT,plotSPACEff)
+
+egg::ggarrange(plots=pLSPACEff,nrow=2,ncol=3)
+```
+
+
+## Empirical cumulative density function
+The ECD plot is used to show the percentage of the data that are within a specific hydraulic efficiency zone. From that, we can calculate how many days the tree has been water stressed and how many has not.
+
+
+```{r}
 ## ECDF plots for each tree (Empirical Cumulative Density Function)
 tibble(treeNo=treeOrder,id=treeID)%>%right_join(sDCT,by="treeNo")%>%
     select(timestamp,id,n)%>%
@@ -552,47 +564,10 @@ tibble(treeNo=treeOrder,id=treeID)%>%right_join(sDCT,by="treeNo")%>%
             legend.key.width = unit(1,"cm")       
 )
 
+```
 
 
-
-
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ##
-## l <- list()
-## for(i in 1:5){
-##     if(i==1){
-##         b <- as.POSIXct((sDCT%>%select(timestamp)%>%head(1))[[1]])
-##     }else{
-##         b <- as.POSIXct(lightCurveDates[[i-1]])
-##     }
-##     if(i==5){
-##         e <- as.POSIXct((sDCT%>%select(timestamp)%>%tail(1))[[1]])
-##     }else{
-##         e <- as.POSIXct(lightCurveDates[[i]])
-##     }
-##     l[[i]] <- sDCT%>%filter(between(timestamp,b,e))%>%
-##         mutate_all(~ifelse(is.nan(.),NA,.))%>%
-##         rename(efficiency=n)%>%
-##         ## group_by(timestamp=as.POSIXct(cut(timestamp,"1 day")))%>%
-##         group_by(treeNo)%>%
-##         summarise(eff=mean(efficiency,na.rm=TRUE),
-##                   eff.se=se.f(efficiency))%>%
-##         mutate(startTimestamp=b,endTimestamp=e,.before=1)
-## }
-
-## meanEff.data <- do.call("rbind",l)
-
-## meanEff.data <- tibble(treeNo=treeOrder,id=treeID)%>%right_join(meanEff.data,by="treeNo")
-
-## ## meanEff.data <- meanEff.data%>%
-## ##     mutate(treatment=case_when(treeNo %in% c(6,8,12)~"C",
-## ##                                treeNo %in% c(2,5,16)~"MD"))%>%
-## ##     mutate(treat=treatment,trN=treeNo)%>%
-## ##     unite(id,c("treat","trN"),sep="-")%>%
-## ##     mutate(date=as.Date(startTimestamp))
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ##
-
-
+```{r}
 ## ~~~~~~~~~~~~~~~~ Mean Efficiency per Light Curve date ~~~~~~~~~~~~~~~ ##
 
 meanEfficiencyLightCurveList <- list()
@@ -644,15 +619,6 @@ calculateRsq(data=lightCurveEff,modelFit = fit.phiJ,depVar = n_mean)
 pred.phiJ<-tibble(phiJ=seq(0,0.3,0.005),n.pred=Michaelis_Menten(phiJ,slope=coef(fit.phiJ)[[2]],sat=coef(fit.phiJ)[[1]],r=coef(fit.phiJ)[[3]]))
 
 
-
-
-
-
-# lightCurveEff%>%
-#   ggplot(.)+
-#   geom_point(aes(k_sat,n_mean,shape=treatment,colour=as.factor(date)),size=3)+
-#   plotAesthetic+
-#   geom_line(data=pred,aes(x=ksat,y=n.pred))
 
 
 
@@ -895,8 +861,11 @@ pEff.R_d <- aciCurveEff%>%
 
 ```
 
+
+## Mean hydraulic efficiency vs gas exchange fitted parameters
+For each survey date, I fitted light and A/Ci curves. For the same dates and for between 8 a.m. to 3 p.m. hydraulic efficiency was averaged for each tree and plotted against the key fitted parametesr of the light and A/Ci curves. The plots show Ksat, PhiJ, Vcmax and Jmax. We see that for three out of four parameters there is a Michaelis-Menten response suggesting that water stress trees have lower maximum photosynthesis and both rate of carboxylation and electron transport. Furthermore, it clearly shows that the new methodology although its calculations is based on water there is a relationship which photosynthesis, since water limitation will impact stomata opening and limit carbon capture and restrict photosynthesis. It increases my confidence that $\eta$ is good in monitoring both water stress and photosynthetic limitation.
+
 ```{r,fig.width=20,fig.height=14}
 egg::ggarrange(pEff.kSat,pEff.phiJ,pEff.Vcmax,pEff.Jmax,nrow=2,ncol=2)
-
 
 ```
