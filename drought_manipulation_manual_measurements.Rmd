@@ -25,62 +25,103 @@ knitr::opts_knit$set(kable.force.latex = FALSE)
 
 
 ```{r}
+
+## The colour palette to use for some of the graphs
+jet.colours <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan", "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))
+colours<-jet.colours(7)
+colours12 <- jet.colours(12)
+
+## ------------------------------------------------------------------------ ##
+meanPerDate <- function(data,datesArray){
+    start <- as.POSIXct(datesArray,tz="GMT")+lubridate::hours(8)
+    end <- as.POSIXct(datesArray,tz="GMT")+lubridate::hours(16)
+    l <- list()
+    for(i in 1:length(datesArray)){
+        l[[i]] <- data%>%filter(between(timestamp,start[[i]],end[[i]]))%>%
+            group_by(timestamp=as.Date(timestamp))%>%
+            summarise(across(1:10,.f=list(mean=mean,se=se.f)))
+    }
+    d <- do.call("rbind",l)
+}
+
+## ======================================================================== ##
+
+## Set up some directory locations
 dtclassDir <- "/home/george/Documents/DTCLASS/data/"
 
-manual<-readFile("/home/george/Documents/DTCLASS/data/processed/manual_measurements/manual.csv",h=T)
+## Read all the necessary timeseries datasets
+## biomet <- readRDS(file=paste0(dtclassDir,"processed/biomet/biomet.RDS"))
+sapData <- readRDS(file=paste0(dtclassDir,"processed/sapflow/sapData.RDS"))
+manual <- readFile("/home/george/Documents/DTCLASS/data/processed/manual_measurements/manual.csv",h=T)%>%mutate(id=ID)%>%separate(id,c("treatment","treeNo"))%>%rename("date"="Date")%>%mutate(treeNo=as.numeric(treeNo))
 
-manual<-manual%>%mutate(id=ID)%>%separate(id,c("treatment","tree"))
 
+## Create a new dataframe with the treatment code and tree number
+treatment <- tibble(treeID=c("C-6","C-8","C-12","MD-2","MD-5","MD-16"))%>%separate(treeID,c("treatment","treeNo"))%>%mutate(treeNo=as.numeric(treeNo))
 
+manualDates <- manual%>%select(date)%>%as.data.frame()%>%pull("date")%>%unique()%>%as.character()
 
+meanSFManualList <- lapply(sapData,meanPerDate,datesArray=manualDates)
+meanSFManualData <- do.call("rbind",meanSFManualList)%>%
+    select(timestamp,treeNo_mean,Vs_in_adj_mean,Vs_in_adj_se)%>%
+    rename_with(.,~gsub("_mean","",.x,fixed=TRUE))%>%
+    rename_with(.,~gsub("_adj","",.x,fixed=TRUE))%>%
+    rename_with(.,~gsub("_in","",.x,fixed=TRUE))%>%
+    rename_with(.,~gsub("_se",".se",.x,fixed=TRUE))%>%
+    rename("date"="timestamp")%>%
+    mutate(Vs=Vs*0.01*0.000277778,
+           Vs.se=Vs.se*0.01*0.000277778)%>% ## 0.01 cm/h->m/h, 0.000277778 m/h->m/s or m3/m2/s
+    left_join(treatment,by="treeNo")
 
-manual <- readFile(dataFile=paste0(dtclassDir,"processed/manual_measurements/manual.csv"),h=T)
-manual <- manual%>%
-    mutate(date=as.POSIXct(as.character(Date),tz="GMT"))%>%
-    separate(ID,c("treatment","tree"))%>%
-    mutate(tree=as.numeric(tree),
-           PsiL=-PsiL*0.1)
+manualData <- meanSFManualData%>%left_join(manual,by=c("date","treeNo","treatment"))%>%
+    mutate(PsiL=PsiL*-0.1, ## bar to MPa
+           deltaPsi=PsiL-PsiS,
+           r=(deltaPsi/Vs)*1e-5
+           )
 
 
 ```
 
 
 ## Manual measurements
-First let's look at all the variables.
+<!-- First let's look at all the variables. -->
 
-```{r,fig.width=16,fig.height=10}
-manual%>%mutate(date=Date)%>%unite(d.tr,c("date","treatment"),sep="-")%>%
-    gather(key="variable",value="value",4:7)%>%
-    ggplot(.)+plotAesthetic+
-    geom_boxplot(aes(d.tr,value,group=d.tr))+
-    facet_wrap(.~variable+Date,scales="free")
-```
+<!-- ```{r,fig.width=16,fig.height=10} -->
+<!-- manual%>%mutate(date=Date)%>%unite(d.tr,c("date","treatment"),sep="-")%>% -->
+<!--     gather(key="variable",value="value",4:7)%>% -->
+<!--     ggplot(.)+plotAesthetic+ -->
+<!--     geom_boxplot(aes(d.tr,value,group=d.tr))+ -->
+<!--     facet_wrap(.~variable+Date,scales="free") -->
+<!-- ``` -->
 
 
-Then let's look at the "leaf" water potential (basically this is for cohort of leaves). This is the mid-day water potential
+This is the mid-day needle cohort water potential
 
 ```{r}
 
+labels <- c("First wet","First drought","Second wet","Second drought","Third wet")
+names(labels) <- manualDates
+
+
 manual%>%
-    group_by(Date,treatment)%>%
-    summarise(across(2:5,list(mean=mean,se=se.f)))%>%
-    ggplot(.,aes(Date,PsiL_mean,group=treatment,fill=treatment))+
-    plotAesthetic+
-    geom_bar(stat="identity",position=position_dodge())+
-    geom_errorbar(aes(x=Date,ymax=PsiL_mean+PsiL_se,ymin=PsiL_mean-PsiL_se),width=2,position=position_dodge(5))+
-    labs(fill="Treatment")+
-    geom_hline(yintercept=0,linetype=2)
+    mutate(PsiL=PsiL*-0.1)%>%
+    ggplot(data=.)+
+    plotAesthetic+Theme+
+    geom_boxplot(aes(treatment,PsiL,group=treatment,fill=treatment))+
+    geom_hline(yintercept=0,linetype=2)+
+    facet_grid(.~date,labeller=as_labeller(labels))+
+    labs(x="Treatment",y=expression(Psi[C]~"[MPa]"))
+
 ```
 
 Finally, let's look at the soil water potential.
 ```{r}
 manual%>%
-    group_by(Date,treatment)%>%
-    summarise(across(2:5,list(mean=mean,se=se.f)))%>%
-    ggplot(.,aes(Date,PsiS_mean,group=treatment,fill=treatment))+
-    plotAesthetic+
-    geom_bar(stat="identity",position=position_dodge())+
-    geom_errorbar(aes(x=Date,ymax=PsiS_mean+PsiS_se,ymin=PsiS_mean-PsiS_se),width=2,position=position_dodge(5))+
-    labs(fill="Treatment")+
-    geom_hline(yintercept=0,linetype=2)
+    mutate(PsiL=PsiL*-0.1)%>%
+    ggplot(data=.)+
+    plotAesthetic+Theme+
+    geom_boxplot(aes(treatment,PsiS,group=treatment,fill=treatment))+
+    geom_hline(yintercept=0,linetype=2)+
+    facet_grid(.~date,labeller=as_labeller(labels))+
+    labs(x="Treatment",y=expression(Psi[S]~"[MPa]"))
+
 ```
